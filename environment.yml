@@ -1,0 +1,40 @@
+name: arc
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ── Python runtime ────────────────────────────────────────────────────────
+  - python=3.11
+
+  # ── Core scientific stack ─────────────────────────────────────────────────
+  - numpy>=1.24
+  - pandas>=2.0
+  - scipy>=1.11
+
+  # ── Bayesian inference ────────────────────────────────────────────────────
+  - pymc>=5.0
+  - pytensor>=2.18        # PyMC5 backend (replaces Aesara)
+  - arviz>=0.17           # posterior diagnostics & summary
+
+  # ── Geospatial / distance utilities ──────────────────────────────────────
+  - geopy>=2.4
+
+  # ── Date / time parsing ───────────────────────────────────────────────────
+  - python-dateutil>=2.9
+
+  # ── Character-encoding detection (used for ADCP CSV cleaning) ────────────
+  - chardet>=5.2
+
+  # ── Progress / logging ───────────────────────────────────────────────────
+  - tqdm>=4.66
+
+  # ── Notebook support (optional but handy for exploration) ────────────────
+  - jupyterlab>=4.0
+  - ipykernel>=6.29
+
+  # ── pip fall-back for anything not on conda-forge ────────────────────────
+  - pip
+  - pip:
+      - pymc>=5.0          # ensures latest PyMC5 if conda-forge lags
