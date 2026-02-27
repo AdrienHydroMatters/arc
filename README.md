@@ -4,17 +4,20 @@
 
 This repository provides a standalone Python tool for estimating **power-law rating curves** from paired Water Surface Elevation (WSE) and river discharge (Q) time series. The approach combines Bayesian Markov Chain Monte Carlo (MCMC) inference with a physically constrained zero-flow datum (*z*₀), enabling uncertainty-aware parameter estimation suitable for large-sample hydrological studies.
 
-The method is designed to work with satellite altimetry WSE data (e.g. Jason-3, Sentinel-6) and global or national discharge archives (e.g. GRDC, HydroWeb). All outputs are structured CSV files — no plots are generated.
+**Two discharge datasets are used with distinct roles:**
+
+- **Q_model** — Simulated discharge from the [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021). Used exclusively for **rating curve calibration**.
+- **Q_obs** — Observed discharge from gauge networks (GRDC, ANA, SCHAPI). Used exclusively for **validation** of the calibrated rating curve. Optional.
+
+Both datasets follow the same file format and naming convention. All outputs are structured CSV files — no plots are generated.
 
 ---
 
 ## Rating Curve Model
 
-The power-law rating curve takes the form:
-
 $$Q = a \cdot (h - z_0)^{b}$$
 
-where *Q* is river discharge (m³ s⁻¹), *h* is water surface elevation (m), *z*₀ is the effective zero-flow datum (m), and *a*, *b* are shape parameters. Parameters are estimated as posterior medians from a Bayesian MCMC sampler with weakly informative priors, and uncertainty is reported as posterior standard deviations.
+where *Q* is river discharge (m³ s⁻¹), *h* is water surface elevation (m), *z*₀ is the effective zero-flow datum (m), and *a*, *b* are shape parameters. Parameters are estimated as posterior medians from a Bayesian MCMC sampler, and uncertainty is reported as posterior standard deviations.
 
 ---
 
@@ -27,30 +30,30 @@ where *Q* is river discharge (m³ s⁻¹), *h* is water surface elevation (m), *
 ├── setup_env.sh             # one-command environment setup helper
 ├── README.md                # This file
 ├── data/
-│   ├── WSE/                 # Water Surface Elevation time series (one file per station)
-│   │   └── WSE_{BASIN}_{STATION}[_suffix].txt
-│   ├── Q/                   # Discharge time series (one file per station)
-│   │   └── Q_{BASIN}_{STATION}[_suffix].txt
-│   └── Zmin.csv             # Optional per-station z0 constraint table
-└── results/                 # Output folder (auto-created)
-    ├── rating_curve_summary.csv
-    └── validation.csv
+    ├── WSE_clean/                 # Water Surface Elevation time series
+    │   └── WSE_{BASIN}_{STATION}[_suffix].txt
+    ├── Q_model/             # RAPID/RRR model discharge (calibration)
+    │   └── Q_{BASIN}_{STATION}[_suffix].txt
+    ├── Q_obs/               # Observed discharge — GRDC, ANA, SCHAPI (validation)
+    │   └── Q_{BASIN}_{STATION}[_suffix].txt
+    └── Zmin.csv             # Optional per-station z0 constraint table
+
 ```
 
 ---
 
 ## Input Data Format
 
-Both WSE and Q files are **semicolon-delimited** with a mandatory header. Each file contains the complete time series for one gauging or virtual station.
+All WSE and Q files (model and observed) are **semicolon-delimited** with a mandatory header.
 
 ### File naming convention
 
 | Type | Pattern | Example |
 |---|---|---|
 | WSE | `WSE_{BASIN}_{STATION}[_suffix].txt` | `WSE_NIGER_MALANVILLE_JASON3.txt` |
-| Discharge | `Q_{BASIN}_{STATION}[_suffix].txt` | `Q_NIGER_MALANVILLE.txt` |
+| Q (model or obs) | `Q_{BASIN}_{STATION}[_suffix].txt` | `Q_NIGER_MALANVILLE.txt` |
 
-WSE and Q files are paired automatically by **bidirectional longest-prefix match** on the `{BASIN}_{STATION}` token. Either file may carry an extra suffix the other does not.
+WSE files are paired with Q files automatically by **bidirectional longest-prefix match** on the `{BASIN}_{STATION}` token. Either file may carry an extra suffix the other does not. Pairing is applied independently to Q_model and Q_obs folders.
 
 **Examples of valid pairs**
 
@@ -70,11 +73,11 @@ WSE and Q files are paired automatically by **bidirectional longest-prefix match
 | `date` | — | Timestamp `YYYY-MM-DD HH:MM:SS` |
 | `value` | m or m³ s⁻¹ | Observed WSE or discharge |
 | `uncertainty` | same as value | Measurement uncertainty (1σ); `nan` if unavailable |
-| `source` | — | Data provider (e.g. `grdc`, `Jason3`) |
+| `source` | — | Data provider (e.g. `grdc`, `SCHAPI`, `RAPID`, `Jason3`) |
 
 ### Zmin.csv — per-station z0 constraint
 
-An optional CSV file can be used to supply a pre-defined *z*₀ upper constraint for each station, for instance derived from bathymetric surveys or a prior rating curve. It must be semicolon-delimited with the following columns:
+An optional CSV file to supply a pre-defined *z*₀ upper constraint per station (e.g. from bathymetric surveys). Format:
 
 ```
 station;lon;lat;zmin
@@ -82,17 +85,13 @@ NIGER_MALANVILLE;2.43;11.87;176.32
 DANUBE_MOHACS;18.69;45.99;74.10
 ```
 
-The `station` key must match `{BASIN}_{STATION}` (case-insensitive). If a station is absent from the file, `min(WSE)` is used as fallback.
+The `station` key must match `{BASIN}_{STATION}` (case-insensitive). If a station is absent, `min(WSE)` is used as fallback.
 
-> **Note on temporal coverage.** WSE and Q series do not need to span the same period. The script automatically finds the common overlap window (within ±24 h per pair) for calibration, and uses the full Q archive for climatology.
+> **Note on temporal coverage.** WSE and Q series do not need to span the same period. Calibration uses the temporal overlap between WSE and Q_model. Q_obs is used independently for validation.
 
 ---
 
 ## Environment Setup
-
-A ready-to-use conda environment named **`arc`** is provided.
-
-**Requirements:** [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda ≥ 23.x
 
 ```bash
 # Create the environment
@@ -105,14 +104,14 @@ conda activate arc
 bash setup_env.sh --update
 ```
 
-Key dependencies: Python 3.11, NumPy ≥ 1.24, pandas ≥ 2.0, SciPy ≥ 1.11, PyMC ≥ 5.0, ArviZ ≥ 0.17, geopy ≥ 2.4.
+Key dependencies: Python 3.11, NumPy ≥ 1.24, pandas ≥ 2.0, SciPy ≥ 1.11, PyMC ≥ 5.0, ArviZ ≥ 0.17, geopy ≥ 2.4. Requires Miniconda or Anaconda ≥ 23.x.
 
 ---
 
 ## Usage
 
 ```bash
-python compute_arc.py  <WSE_folder>  <Q_folder>  [options]
+python compute_arc.py  <WSE_folder>  <Q_model_folder>  [options]
 ```
 
 ### Command-line arguments
@@ -120,8 +119,9 @@ python compute_arc.py  <WSE_folder>  <Q_folder>  [options]
 | Argument | Default | Description |
 |---|---|---|
 | `WSE_folder` | required | Folder containing `WSE*.txt` files |
-| `Q_folder` | required | Folder containing `Q*.txt` files |
-| `-z0 / --force_z0` | `None` | Path to a semicolon CSV (`station;lon;lat;zmin`) with per-station *z*₀ constraints. If omitted, `min(WSE)` is used. |
+| `Q_model_folder` | required | Folder containing `Q*.txt` files (RAPID/RRR model — calibration) |
+| `-qobs / --Q_obs_folder` | `None` | Folder containing observed `Q*.txt` files (GRDC/ANA/SCHAPI — validation only). If omitted, no `validation.csv` is produced. |
+| `-z0 / --force_z0` | `None` | Path to `Zmin.csv` (`station;lon;lat;zmin`) for per-station *z*₀ constraints |
 | `-o / --outpath` | `WSE_folder/rating_curve/` | Output directory |
 | `-b / --basin` | `None` | Restrict to files matching a basin token (e.g. `NIGER`) |
 | `-m / --min_points` | `12` | Minimum overlap pairs before falling back to the quantile approach |
@@ -129,24 +129,23 @@ python compute_arc.py  <WSE_folder>  <Q_folder>  [options]
 ### Examples
 
 ```bash
-# Basic usage — z0 inferred from data
-python compute_arc.py ./data/WSE ./data/Q
+# Calibration only — no validation
+python compute_arc.py ./data/WSE ./data/Q_model
 
-# Provide per-station z0 constraints from Zmin.csv
-python compute_arc.py ./data/WSE ./data/Q -z0 ./data/Zmin.csv
+# Calibration + validation against observed discharge
+python compute_arc.py ./data/WSE ./data/Q_model -qobs ./data/Q_obs
 
-# Process only Niger basin stations, save to custom folder
-python compute_arc.py ./data/WSE ./data/Q -b NIGER -o ./results/NIGER
+# With per-station z0 constraints and custom output folder
+python compute_arc.py ./data/WSE ./data/Q_model -qobs ./data/Q_obs \
+    -z0 ./data/Zmin.csv -o ./results
 
-# Require at least 20 calibration points
-python compute_arc.py ./data/WSE ./data/Q -m 20
+# Niger basin only
+python compute_arc.py ./data/WSE ./data/Q_model -qobs ./data/Q_obs -b NIGER
 ```
 
 ---
 
 ## Outputs
-
-All outputs are written to `<outpath>/`.
 
 ### `rating_curve_summary.csv` — one row per station
 
@@ -157,19 +156,19 @@ All outputs are written to `<outpath>/`.
 | `a`, `b`, `z0` | RC parameters — posterior medians |
 | `a_sd`, `b_sd`, `z0_sd` | Posterior standard deviations |
 | `zmin` | Minimum WSE of the calibration data (m) |
-| `NSE`, `KGE`, `PBIAS`, `NRMSE`, `R2` | Performance metrics on climate monthly means |
+| `NSE`, `KGE`, `PBIAS`, `NRMSE`, `R2` | Performance on climate monthly means (Q_model vs Q_RC) |
 | `approach` | Calibration strategy: `overlap` or `quantile` |
 | `nb_cal_points` | Number of pairs used for fitting |
 | `nb_clim_months` | Number of climate months used for summary statistics |
 
-### `validation.csv` — one row per station (when available)
+### `validation.csv` — one row per station (requires `--Q_obs_folder`)
 
-Statistics are computed on **year-monthly means** of *Q*RC vs. *Q*insitu over the common temporal overlap.
+Statistics computed on **year-monthly means** of *Q*RC versus *Q*obs over their common temporal overlap.
 
 | Column | Description |
 |---|---|
 | `basin`, `station`, `lon`, `lat` | Station identifiers and coordinates |
-| `NSE`, `KGE`, `PBIAS`, `NRMSE`, `R2` | Performance metrics |
+| `NSE`, `KGE`, `PBIAS`, `NRMSE`, `R2` | Performance metrics (Q_RC vs Q_obs) |
 | `val_start`, `val_end` | First and last `YYYY-MM` of the validation period |
 | `nb_months` | Number of year-months compared |
 
@@ -177,13 +176,13 @@ Statistics are computed on **year-monthly means** of *Q*RC vs. *Q*insitu over th
 
 ## Methods
 
-**Date matching.** WSE and Q observations are paired if their timestamps are within ±24 hours of each other (closest neighbour).
+**Date matching.** WSE and Q_model observations are paired if timestamps are within ±24 hours of each other (closest neighbour).
 
 **Outlier filtering.** A local monotonicity filter in WSE-sorted order flags observations whose discharge falls more than 20 % below the median discharge of their 5 nearest WSE-space neighbours.
 
-**z₀ constraint.** The zero-flow datum is physically constrained to remain strictly below the minimum observed WSE. When `--force_z0` is provided, the per-station `zmin` value from the CSV is used instead.
+**z₀ constraint.** The zero-flow datum is constrained to remain strictly below the minimum observed WSE. When `--force_z0` is provided, the per-station `zmin` from `Zmin.csv` is used instead.
 
-**Bayesian inference.** Parameters are estimated using a Metropolis MCMC sampler (4 chains, 10 000 sampling steps, 2 000 tuning steps) via [PyMC](https://www.pymc.io/). Weakly informative priors are:
+**Bayesian inference.** Parameters estimated using a Metropolis MCMC sampler (4 chains, 10 000 sampling steps, 2 000 tuning steps) via [PyMC](https://www.pymc.io/). Weakly informative priors:
 
 | Parameter | Prior |
 |---|---|
@@ -191,16 +190,17 @@ Statistics are computed on **year-monthly means** of *Q*RC vs. *Q*insitu over th
 | *b* | TruncatedNormal(μ = 1.67, σ = 1.2, lower = 1) |
 | *z*₀ | TruncatedNormal(μ = hmin − 5, σ = 30, upper = *z*₀\_constraint − 0.05) |
 
-**Calibration strategy.** If the number of valid overlap pairs is ≥ `min_points` (default 12), the Bayesian fitter runs on observed data (**overlap approach**). Otherwise, it falls back to a **quantile approach**: year-monthly means are computed for both WSE and Q, 21 quantile levels are sampled from each, and paired by rank to produce 21 synthetic calibration pairs.
+**Calibration strategy.** If the number of valid WSE–Q_model overlap pairs is ≥ `min_points` (default 12), the Bayesian fitter runs on observed overlap data (**overlap approach**). Otherwise, it falls back to a **quantile approach**: year-monthly means are computed for both WSE and Q_model, 21 quantile levels are sampled from each and paired by rank to produce 21 synthetic calibration pairs.
 
-**Validation.** Performance metrics (NSE, KGE, PBIAS, NRMSE, R²) are computed between climate monthly means (summary) and year-monthly means (validation) of *Q*RC and *Q*insitu.
+**Validation.** When Q_obs data are provided, performance metrics (NSE, KGE, PBIAS, NRMSE, R²) are computed between year-monthly means of *Q*RC and *Q*obs over their common temporal window.
 
 ---
 
 ## Data Sources
 
-- **WSE** — [USDA HydroWeb](https://hydroweb.next.theia-land.fr/), Jason-3 / Sentinel-6 altimetry products
-- **Discharge** — [Global Runoff Data Centre (GRDC)](https://www.bafg.de/GRDC/), national hydrological services
+- **WSE** — [HydroWeb](https://hydroweb.next.theia-land.fr/), Jason-3 / Sentinel-6 altimetry products
+- **Q_model** — [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021)
+- **Q_obs** — [GRDC](https://www.bafg.de/GRDC/), [ANA](https://www.gov.br/ana/), [SCHAPI](https://www.hydro.eaufrance.fr/)
 
 ---
 
