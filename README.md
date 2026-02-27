@@ -7,7 +7,7 @@ This repository provides a standalone Python tool for estimating **power-law rat
 **Two discharge datasets are used with distinct roles:**
 
 - **Q_model** — Simulated discharge from the [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021). Used exclusively for **rating curve calibration**.
-- **Q_obs** — Observed discharge from gauge networks (GRDC, ANA, SCHAPI). Used exclusively for **validation** of the calibrated rating curve. Optional.
+- **Q_obs** — Observed discharge from gauge networks (e.g GRDC, ANA, SCHAPI). Used exclusively for **validation** of the calibrated rating curve. Optional.
 
 Both datasets follow the same file format and naming convention. All outputs are structured CSV files — no plots are generated.
 
@@ -33,8 +33,6 @@ where *Q* is river discharge (m³ s⁻¹), *h* is water surface elevation (m), *
     ├── WSE_clean/                 # Water Surface Elevation time series
     │   └── WSE_{BASIN}_{STATION}[_suffix].txt
     ├── Q_model/             # RAPID/RRR model discharge (calibration)
-    │   └── Q_{BASIN}_{STATION}[_suffix].txt
-    ├── Q_obs/               # Observed discharge — GRDC, ANA, SCHAPI (validation)
     │   └── Q_{BASIN}_{STATION}[_suffix].txt
     └── Zmin.csv             # Optional per-station z0 constraint table
 
@@ -200,7 +198,7 @@ Statistics computed on **year-monthly means** of *Q*RC versus *Q*obs over their 
 
 - **WSE** — [HydroWeb](https://hydroweb.next.theia-land.fr/), Jason-3 / Sentinel-6 altimetry products
 - **Q_model** — [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021)
-- **Q_obs** — [GRDC](https://www.bafg.de/GRDC/), [ANA](https://www.gov.br/ana/), [SCHAPI](https://www.hydro.eaufrance.fr/)
+- **Q_obs** — e.g. [GRDC](https://www.bafg.de/GRDC/), [ANA](https://www.gov.br/ana/), [SCHAPI](https://www.hydro.eaufrance.fr/)
 
 ---
 
