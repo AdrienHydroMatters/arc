@@ -34,34 +34,40 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-rating_curve.py
----------------
+compute_arc.py
+--------------
 Bayesian Rating Curve Estimation from WSE and Discharge time series.
 
 Computes the power-law rating curve  Q = a * (WSE - z0)^b
 using Bayesian inference (PyMC / Metropolis sampler).
 
+Two discharge inputs are distinguished:
+    Q_model  (required)  Simulated discharge from the RAPID/RRR routing model
+                         (David et al., 2021 — https://doi.org/10.5281/zenodo.5519672).
+                         Used exclusively for RC calibration.
+    Q_obs    (optional)  Observed discharge from gauge networks.
+                         Used exclusively for validation against Q_RC.
+Both follow the same file naming convention: Q_{BASIN}_{STATION}[_suffix].txt
+
 Calibration strategy
 --------------------
-    1. OVERLAP (preferred): date-matched WSE/Q pairs within +/-24 h.
+    1. OVERLAP (preferred): date-matched WSE/Q_model pairs within +/-24 h.
        Used when valid overlap points >= min_points (default 12).
     2. QUANTILE (fallback): when overlap is insufficient.
        - Compute year-monthly means (one value per YYYY-MM) for both
-         WSE and Q over the full available record.
+         WSE and Q_model over the full available record.
        - Draw 21 quantile levels (0, 5, 10, ... 100%) from those
          year-monthly series and pair them by rank.
        - These 21 synthetic (WSE, Q) pairs feed the Bayesian fitter.
 
 Validation statistics
 ---------------------
-    Climate monthly means (Jan-Dec, averaged across all years) of
-    Qrc (rating curve applied to WSE altimetry) are compared to Qinsitu
-    climate monthly means using NSE, KGE, pBIAS, NRMSE, R2.
-    A validation.csv is produced for stations where comparison is possible.
+    When Q_obs_folder is provided, year-monthly means of Q_RC (rating curve
+    applied to the full WSE altimetry series) are compared to Q_obs year-monthly
+    means using NSE, KGE, pBIAS, NRMSE, R2.
+    A validation.csv is produced for stations where comparison is possible
+    (>= 2 common YYYY-MM months).
 
 Outputs (in <outpath>/)
 -----------------------
@@ -69,30 +75,33 @@ Outputs (in <outpath>/)
                                basin, station, lon, lat,
                                a, b, z0, a_sd, b_sd, z0_sd, zmin,
                                NSE, KGE, PBIAS, NRMSE, R2,
-                               approach, nb_points
-    validation.csv             one row per station (when stats available):
+                               approach, nb_cal_points, nb_clim_months
+    validation.csv             one row per station (when Q_obs available):
                                basin, station, lon, lat,
                                NSE, KGE, PBIAS, NRMSE, R2,
                                val_start, val_end, nb_months
 
 Usage
 -----
-    python rating_curve.py  <WSE_folder>  <Q_folder>  [options]
+    python compute_arc.py  <WSE_folder>  <Q_model_folder>  [options]
 
     positional arguments:
-        WSE_folder          folder containing WSE*.txt files
-        Q_folder            folder containing Q*.txt files
+        WSE_folder            folder containing WSE*.txt files
+        Q_model_folder        folder containing Q*.txt files (RAPID/RRR model output)
 
     optional arguments:
-        -z0  --force_z0     str    Path to a semicolon-delimited CSV with columns
-                                   station;zmin  where station = {BASIN}_{STATION}.
-                                   If provided, the zmin value for each station is used
-                                   as the z0 upper constraint instead of min(WSE).
-                                   If a station is not found in the CSV, min(WSE) is used.
-        -o   --outpath      str    Output folder. Default: WSE_folder/rating_curve/
-        -b   --basin        str    Filter files by basin name (e.g. NIGER).
-        -m   --min_points   int    Minimum overlap points before falling back to
-                                   the quantile approach (default: 12).
+        -qobs --Q_obs_folder  str    Folder containing observed Q*.txt files
+                                     (GRDC / ANA / SCHAPI). Used only for validation.
+                                     If omitted, no validation.csv is produced.
+        -z0   --force_z0      str    Path to a semicolon-delimited CSV with columns
+                                     station;lon;lat;zmin  where station = {BASIN}_{STATION}.
+                                     If provided, the zmin value for each station is used
+                                     as the z0 upper constraint instead of min(WSE).
+                                     If a station is not found in the CSV, min(WSE) is used.
+        -o    --outpath       str    Output folder. Default: WSE_folder/rating_curve/
+        -b    --basin         str    Filter files by basin name (e.g. NIGER).
+        -m    --min_points    int    Minimum overlap points before falling back to
+                                     the quantile approach (default: 12).
 
 Input file format (semicolon-delimited, header required)
 ---------------------------------------------------------
@@ -475,15 +484,28 @@ def parse_basin_station(wse_file):
 # MAIN PROCESSING FUNCTION
 # =============================================================================
 
-def process_station(wse_file, q_file, outpath, z0_table=None, min_points=12):
-    """Compute the rating curve for one WSE / Q file pair and write outputs."""
+def process_station(wse_file, q_model_file, outpath,
+                    q_obs_file=None, z0_table=None, min_points=12):
+    """
+    Compute the rating curve for one WSE / Q_model file pair and write outputs.
+
+    Parameters
+    ----------
+    wse_file      : path to WSE*.txt
+    q_model_file  : path to Q*.txt (RAPID/RRR model output — used for calibration)
+    outpath       : output directory
+    q_obs_file    : path to Q*.txt (observed discharge from GRDC/ANA/SCHAPI — validation only)
+                    May be None; if so, no validation.csv entry is produced.
+    z0_table      : dict {BASIN_STATION: zmin} from load_z0_table()
+    min_points    : minimum overlap points before quantile fallback
+    """
     basin, station = parse_basin_station(wse_file)
     label = f'{basin}_{station}'
     print(f'\n--- Processing: {label} ---')
 
     # ── load ──────────────────────────────────────────────────────────────
     wse_df = read_hm_df(wse_file)
-    q_df   = read_hm_df(q_file)
+    q_df   = read_hm_df(q_model_file)
 
     wse_df = wse_df.dropna(subset=['value'])
     q_df   = q_df[q_df['value'] >= 0].dropna(subset=['value'])
@@ -601,49 +623,57 @@ def process_station(wse_file, q_file, outpath, z0_table=None, min_points=12):
     # ==========================================================
     # VALIDATION STATISTICS  —  year-monthly means (N pts)
     # ==========================================================
-    # Compute one value per YYYY-MM for both Qrc and Qinsitu,
+    # Requires q_obs_file (observed discharge from GRDC/ANA/SCHAPI).
+    # Compute one value per YYYY-MM for both Qrc and Qobs,
     # align on the common YYYY-MM keys, then compare.
-    # This gives a variable number of points depending on the
-    # length of the records and their temporal overlap.
-    ym_qrc_keys,  ym_qrc_vals  = yearmonthly_mean(wse_df['date'].values,
-                                                   q_rc_all)
-    ym_qobs_keys, ym_qobs_vals = yearmonthly_mean(q_df['date'].values,
-                                                   q_df['value'].values)
+    if q_obs_file is not None:
+        q_obs_df = read_hm_df(q_obs_file)
+        q_obs_df = q_obs_df[q_obs_df['value'] >= 0].dropna(subset=['value'])
+        print(f'  Validation against observed Q: {os.path.basename(q_obs_file)}')
 
-    ym_qrc_dict  = dict(zip(ym_qrc_keys,  ym_qrc_vals))
-    ym_qobs_dict = dict(zip(ym_qobs_keys, ym_qobs_vals))
+        ym_qrc_keys,  ym_qrc_vals  = yearmonthly_mean(wse_df['date'].values,
+                                                       q_rc_all)
+        ym_qobs_keys, ym_qobs_vals = yearmonthly_mean(q_obs_df['date'].values,
+                                                       q_obs_df['value'].values)
 
-    common_ym  = sorted(set(ym_qrc_keys) & set(ym_qobs_keys))
-    nb_val_months = len(common_ym)
+        ym_qrc_dict  = dict(zip(ym_qrc_keys,  ym_qrc_vals))
+        ym_qobs_dict = dict(zip(ym_qobs_keys, ym_qobs_vals))
 
-    if nb_val_months >= 2:
-        qobs_ym = np.array([ym_qobs_dict[m] for m in common_ym])
-        qrc_ym  = np.array([ym_qrc_dict[m]  for m in common_ym])
-        crit_val = calc_criteria(qobs_ym, qrc_ym)
-        val_start = common_ym[0]
-        val_end   = common_ym[-1]
-        print(f'  Validation stats ({nb_val_months} year-monthly means, '
-              f'{val_start} to {val_end}): '
-              f'NSE={crit_val["NSE"]:.3f}  '
-              f'KGE={crit_val["KGE"]:.3f}  '
-              f'R2={crit_val["R2"]:.3f}')
+        common_ym  = sorted(set(ym_qrc_keys) & set(ym_qobs_keys))
+        nb_val_months = len(common_ym)
 
-        val_row = {
-            'basin':      basin,
-            'station':    station,
-            'lon':        round(lon, 4),
-            'lat':        round(lat, 4),
-            'NSE':        crit_val['NSE'],
-            'KGE':        crit_val['KGE'],
-            'PBIAS':      crit_val['PBIAS'],
-            'NRMSE':      crit_val['NRMSE'],
-            'R2':         crit_val['R2'],
-            'val_start':  val_start,
-            'val_end':    val_end,
-            'nb_months':  nb_val_months,
-        }
-        append_row(val_row, VALIDATION_COLS,
-                   os.path.join(outpath, 'validation.csv'))
+        if nb_val_months >= 2:
+            qobs_ym = np.array([ym_qobs_dict[m] for m in common_ym])
+            qrc_ym  = np.array([ym_qrc_dict[m]  for m in common_ym])
+            crit_val = calc_criteria(qobs_ym, qrc_ym)
+            val_start = common_ym[0]
+            val_end   = common_ym[-1]
+            print(f'  Validation stats ({nb_val_months} year-monthly means, '
+                  f'{val_start} to {val_end}): '
+                  f'NSE={crit_val["NSE"]:.3f}  '
+                  f'KGE={crit_val["KGE"]:.3f}  '
+                  f'R2={crit_val["R2"]:.3f}')
+
+            val_row = {
+                'basin':      basin,
+                'station':    station,
+                'lon':        round(lon, 4),
+                'lat':        round(lat, 4),
+                'NSE':        crit_val['NSE'],
+                'KGE':        crit_val['KGE'],
+                'PBIAS':      crit_val['PBIAS'],
+                'NRMSE':      crit_val['NRMSE'],
+                'R2':         crit_val['R2'],
+                'val_start':  val_start,
+                'val_end':    val_end,
+                'nb_months':  nb_val_months,
+            }
+            append_row(val_row, VALIDATION_COLS,
+                       os.path.join(outpath, 'validation.csv'))
+        else:
+            print(f'  [skip validation] fewer than 2 common YYYY-MM months')
+    else:
+        print('  [skip validation] no Q_obs folder provided')
 
     print(f'  Done -> {label}')
 
@@ -654,11 +684,21 @@ def process_station(wse_file, q_file, outpath, z0_table=None, min_points=12):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Bayesian Rating Curve computation (no plots).',
+        description='Bayesian Rating Curve computation (no plots).\n'
+                    'Calibration uses RAPID/RRR model discharge (Q_model_folder).\n'
+                    'Validation uses observed discharge from GRDC/ANA/SCHAPI (--Q_obs_folder).',
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('WSE_folder', help='Folder containing WSE*.txt files')
-    parser.add_argument('Q_folder',   help='Folder containing Q*.txt files')
+    parser.add_argument('WSE_folder',
+                        help='Folder containing WSE*.txt files')
+    parser.add_argument('Q_model_folder',
+                        help='Folder containing Q*.txt files (RAPID/RRR model output,\n'
+                             'David et al. 2021, doi:10.5281/zenodo.5519672).\n'
+                             'Used for RC calibration.')
+    parser.add_argument('-qobs', '--Q_obs_folder', default=None,
+                        help='Folder containing observed Q*.txt files\n'
+                             '(GRDC / ANA / SCHAPI — same naming convention).\n'
+                             'Used only for validation. Omit to skip validation.')
     parser.add_argument('-z0', '--force_z0',   default=None,
                         help='Path to a semicolon CSV with columns station;lon;lat;zmin\n'
                              'station key = {BASIN}_{STATION}.\n'
@@ -671,51 +711,67 @@ def main():
                         help='Minimum overlap points before falling back to '
                              'the quantile approach (default: 12)')
     args = parser.parse_args()
-    WSE_folder  = args.WSE_folder
-    Q_folder    = args.Q_folder
-    z0_csv      = args.force_z0   # path to CSV or None
-    outpath     = args.outpath
-    basin       = args.basin
-    min_points  = args.min_points
+    WSE_folder     = args.WSE_folder
+    Q_model_folder = args.Q_model_folder
+    Q_obs_folder   = args.Q_obs_folder    # optional; None if not provided
+    z0_csv         = args.force_z0
+    outpath        = args.outpath
+    basin          = args.basin
+    min_points     = args.min_points
 
-    outpath  = outpath or os.path.join(WSE_folder, 'rating_curve')
+    outpath = outpath or os.path.join(WSE_folder, 'rating_curve')
     os.makedirs(outpath, exist_ok=True)
 
     z0_table = load_z0_table(z0_csv)
 
     # ── discover files ─────────────────────────────────────────────────────
     basin_tag = f'*_{basin.upper()}_*' if basin else '*'
-    wse_files = sorted(glob.glob(os.path.join(WSE_folder, f'WSE{basin_tag}.txt')))
-    q_files   = sorted(glob.glob(os.path.join(Q_folder,   f'Q{basin_tag}.txt')))
+    wse_files     = sorted(glob.glob(os.path.join(WSE_folder,     f'WSE{basin_tag}.txt')))
+    q_model_files = sorted(glob.glob(os.path.join(Q_model_folder, f'Q{basin_tag}.txt')))
+    q_obs_files   = sorted(glob.glob(os.path.join(Q_obs_folder,   f'Q{basin_tag}.txt')))                     if Q_obs_folder else []
 
     if not wse_files:
         raise FileNotFoundError(f'No WSE*.txt files found in {WSE_folder}')
-    if not q_files:
-        raise FileNotFoundError(f'No Q*.txt files found in {Q_folder}')
+    if not q_model_files:
+        raise FileNotFoundError(f'No Q*.txt files found in {Q_model_folder}')
 
-    print(f'Found {len(wse_files)} WSE files and {len(q_files)} Q files')
+    print(f'Found {len(wse_files)} WSE files and {len(q_model_files)} Q_model files')
+    if Q_obs_folder:
+        print(f'Found {len(q_obs_files)} Q_obs files (validation)')
+    else:
+        print('No Q_obs folder provided — validation will be skipped')
 
-    # ── pair WSE <-> Q by bidirectional longest-prefix match ──────────────
+    # ── build stem maps for pairing ────────────────────────────────────────
     # File convention:  WSE_{BASIN}_{STATION}[_suffix].txt
     #                   Q_{BASIN}_{STATION}[_suffix].txt
     # Either file may carry an extra suffix the other does not.
-    # Examples:
-    #   WSE_ADOUR_ADOUR-KM0115-EXP.txt  <->  Q_ADOUR_ADOUR-KM0115-EXP_rivid-23024083.txt
-    #   WSE_NIGER_MALANVILLE_JASON3.txt  <->  Q_NIGER_MALANVILLE.txt
-    wse_stems = {wf: strip_type_prefix(wf, 'WSE_') for wf in wse_files}
-    q_stems   = {qf: strip_type_prefix(qf, 'Q_')   for qf in q_files}
+    wse_stems       = {wf: strip_type_prefix(wf, 'WSE_') for wf in wse_files}
+    q_model_stems   = {qf: strip_type_prefix(qf, 'Q_')   for qf in q_model_files}
+    q_obs_stems     = {qf: strip_type_prefix(qf, 'Q_')   for qf in q_obs_files}
 
     processed, skipped = 0, 0
     for wf in wse_files:
         wse_stem = wse_stems[wf]
-        qf = best_q_match(wse_stem, q_stems)
-        if qf is None:
-            print(f'[no Q match] {os.path.basename(wf)} -> skipping')
+
+        # pair with model Q (required)
+        qf_model = best_q_match(wse_stem, q_model_stems)
+        if qf_model is None:
+            print(f'[no Q_model match] {os.path.basename(wf)} -> skipping')
             skipped += 1
             continue
-        print(f'  Matched: {os.path.basename(wf)}  <->  {os.path.basename(qf)}')
+
+        # pair with observed Q (optional)
+        qf_obs = best_q_match(wse_stem, q_obs_stems) if q_obs_stems else None
+
+        print(f'  Matched (model): {os.path.basename(wf)}  <->  {os.path.basename(qf_model)}')
+        if qf_obs:
+            print(f'  Matched (obs):   {os.path.basename(wf)}  <->  {os.path.basename(qf_obs)}')
+        else:
+            print(f'  No Q_obs match for {os.path.basename(wf)}')
+
         try:
-            process_station(wf, qf, outpath,
+            process_station(wf, qf_model, outpath,
+                            q_obs_file=qf_obs,
                             z0_table=z0_table,
                             min_points=min_points)
             processed += 1
