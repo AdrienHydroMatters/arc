@@ -1,1 +1,0 @@
-station;lon;lat;date;value;uncertainty;source
