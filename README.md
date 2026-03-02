@@ -51,17 +51,9 @@ All WSE and Q files (model and observed) are **semicolon-delimited** with a mand
 | Type | Pattern | Example |
 |---|---|---|
 | WSE | `WSE_{BASIN}_{STATION}[_suffix].txt` | `WSE_NIGER_MALANVILLE_JASON3.txt` |
-| Q (model or obs) | `Q_{BASIN}_{STATION}[_suffix].txt` | `Q_NIGER_MALANVILLE.txt` |
+| Q (model or obs) | `Q_{BASIN}_{STATION}[_suffix].txt` | `Q_NIGER_MALANVILLE_GRDC-03153.txt` |
 
 WSE files are paired with Q files automatically by **bidirectional longest-prefix match** on the `{BASIN}_{STATION}` token. Either file may carry an extra suffix the other does not. Pairing is applied independently to Q_model and Q_obs folders.
-
-**Examples of valid pairs**
-
-| WSE file | Matched Q file |
-|---|---|
-| `WSE_ADOUR_ADOUR-KM0115-EXP.txt` | `Q_ADOUR_ADOUR-KM0115-EXP_rivid-23024083.txt` |
-| `WSE_NIGER_MALANVILLE_JASON3.txt` | `Q_NIGER_MALANVILLE.txt` |
-| `WSE_DANUBE_MOHACS.txt` | `Q_DANUBE_MOHACS.txt` |
 
 ### Column description
 
