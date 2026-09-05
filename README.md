@@ -1,4 +1,4 @@
-# Bayesian Rating Curve Estimation from Satellite Altimetry and In-Situ Discharge
+# Bayesian Rating Curve Estimation from Satellite Altimetry and Model Discharge
 
 ## Overview
 
