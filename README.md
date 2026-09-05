@@ -192,7 +192,7 @@ Statistics computed on **year-monthly means** of *Q*RC versus *Q*obs over their 
 
 - **WSE** — [HydroWeb](https://hydroweb.next.theia-land.fr/), Jason-3 / Sentinel-6 altimetry products
 - **Q_model** — [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021)
-- **Q_obs** — e.g. [GRDC](https://www.bafg.de/GRDC/), [ANA](https://www.gov.br/ana/), [SCHAPI](https://www.hydro.eaufrance.fr/), [SAEM](https://darus.uni-stuttgart.de/dataset.xhtml?persistentId=doi:10.18419/darus-4475)
+- **Q_obs** — e.g. [GRDC](https://www.bafg.de/GRDC/), [ANA](https://www.gov.br/ana/), [SCHAPI](https://www.hydro.eaufrance.fr/)
 
 ---
 
