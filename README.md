@@ -200,7 +200,7 @@ Statistics computed on **year-monthly means** of *Q*RC versus *Q*obs over their 
 
 If you use this software in academic or research work, please cite:
 
-> Paris, A. et al. (2025). *Bayesian Rating Curve Estimation from Satellite Altimetry and In-Situ Discharge* [Software]. Hydro Matters.
+> Paris, A. et al. (2026). *Global Scale River Discharge and Mean Depth from Radar Altimetry and Model* [Software].
 
 ---
 
