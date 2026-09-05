@@ -7,7 +7,7 @@ This repository provides a standalone Python tool for estimating **power-law rat
 **Two discharge datasets are used with distinct roles:**
 
 - **Q_model** — Simulated discharge from the [RAPID/RRR routing model](https://doi.org/10.5281/zenodo.5519672) (David et al., 2021). Used exclusively for **rating curve calibration**.
-- **Q_obs** — Observed discharge from gauge networks (e.g GRDC, ANA, SCHAPI, SAEM). Used exclusively for **validation** of the calibrated rating curve. Optional.
+- **Q_obs** — Observed discharge from gauge networks (e.g GRDC, ANA, SCHAPI). Used exclusively for **validation** of the calibrated rating curve. Optional.
 
 Both datasets follow the same file format and naming convention. All outputs are structured CSV files — no plots are generated.
 
